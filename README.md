@@ -1,12 +1,27 @@
-# Getting Started with Create React App
+# CRM Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A React frontend for the CRM app, built with Bootstrap for styling.
 
-## Available Scripts
+## Setup
 
-In the project directory, you can run:
+1. Ensure the backend is running on http://localhost:3000.
+2. Install dependencies: `npm install`
+3. Start the app: `npm start`
 
-### `npm start`
+## Features
+
+- Dashboard with leads table
+- Filter and search leads
+- Add new leads
+- Set reminders
+- WhatsApp and email links
+- Mobile-friendly
+
+## Notes
+
+- Uses Bootstrap for UI
+- Connects to REST API
+- Date picker for reminders
 
 Runs the app in the development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
