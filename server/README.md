@@ -15,6 +15,8 @@ EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_gmail_app_password
 EMAIL_FROM=your_email@gmail.com
 CORS_ORIGIN=http://localhost:2901
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=200
 ```
 
 2. Install dependencies: `npm install`
@@ -41,6 +43,13 @@ All lead endpoints require `Authorization: Bearer <token>`.
 ## Utility Endpoint
 
 - `GET /health` Returns API status for uptime and deployment checks
+
+## Security and Observability
+
+- Helmet security headers are enabled.
+- IP-based rate limiting is enabled (except `/health`).
+- Every response includes `X-Request-Id` for easier debugging.
+- API errors include `requestId` so logs can be traced quickly.
 
 ## Scheduled Job
 

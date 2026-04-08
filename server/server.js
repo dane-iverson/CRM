@@ -1,12 +1,14 @@
 const path = require("path");
+const crypto = require("crypto");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const nodemailer = require("nodemailer");
 const schedule = require("node-schedule");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
 const Lead = require("./models/lead");
 const User = require("./models/user");
 
@@ -29,13 +31,60 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
+const requestLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.RATE_LIMIT_MAX || 200),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === "/health",
+  handler: (req, res) => {
+    res.status(429).json({
+      error: "Too many requests, please try again later.",
+      requestId: req.requestId,
+    });
+  },
+});
+
+const handleServerError = (res, req, error, statusCode = 500) => {
+  console.error(`[${req.requestId}]`, error);
+
+  return res.status(statusCode).json({
+    error: statusCode === 500 ? "Internal server error" : error.message,
+    requestId: req.requestId,
+  });
+};
+
 // Middleware
+app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on("finish", () => {
+    const durationMs = Date.now() - startedAt;
+    console.log(
+      `${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms [${req.requestId}]`,
+    );
+  });
+
+  next();
+});
+app.use(helmet());
 app.use(cors(corsOptions));
+app.use(requestLimiter);
 app.use(express.json());
 
 // Health check endpoint for hosting platforms and uptime checks.
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime() });
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    requestId: req.requestId,
+  });
 });
 
 // Nodemailer transporter
@@ -112,7 +161,7 @@ app.post("/auth/register", async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -146,7 +195,7 @@ app.post("/auth/login", async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -163,7 +212,7 @@ app.get("/leads", authenticateToken, async (req, res) => {
     const leads = await Lead.find(query).populate("userId", "name email role");
     res.json(leads);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -189,7 +238,7 @@ app.post("/leads", authenticateToken, async (req, res) => {
     await lead.save();
     res.status(201).json(lead);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -211,7 +260,7 @@ app.put("/leads/:id", authenticateToken, async (req, res) => {
     }
     res.json(lead);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -229,7 +278,7 @@ app.delete("/leads/:id", authenticateToken, async (req, res) => {
     }
     res.json({ message: "Lead deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
 });
 
@@ -255,8 +304,19 @@ app.get("/leads/search", authenticateToken, async (req, res) => {
     );
     res.json(leads);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err && err.message === "CORS origin not allowed") {
+    return res.status(403).json({
+      error: "CORS origin not allowed",
+      requestId: req.requestId,
+    });
+  }
+
+  return handleServerError(res, req, err);
 });
 
 // POST /reminder/:leadId - schedule reminder
