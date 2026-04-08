@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const API_BASE = "http://localhost:4000";
@@ -8,8 +9,12 @@ function LoginPage({ onLoginSuccess }) {
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
+  const [role, setRole] = useState("rep");
+  const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,13 +23,18 @@ function LoginPage({ onLoginSuccess }) {
 
     try {
       const endpoint = isSignUp ? "/auth/register" : "/auth/login";
-      const data = isSignUp ? { name, email, password } : { email, password };
+      const data = isSignUp
+        ? { name, email, password, role, adminCode }
+        : { email, password };
       const response = await axios.post(`${API_BASE}${endpoint}`, data);
 
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
+      axios.defaults.headers.common["Authorization"] =
+        `Bearer ${response.data.token}`;
 
       onLoginSuccess(response.data.user);
+      navigate("/");
     } catch (err) {
       setError(err.response?.data?.error || "An error occurred");
     } finally {
@@ -44,16 +54,41 @@ function LoginPage({ onLoginSuccess }) {
 
           <form onSubmit={handleSubmit}>
             {isSignUp && (
-              <div className="mb-3">
-                <label className="form-label">Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
+              <>
+                <div className="mb-3">
+                  <label className="form-label">Name</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Role</label>
+                  <select
+                    className="form-select"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                  >
+                    <option value="rep">Sales Rep</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                {role === "admin" && (
+                  <div className="mb-3">
+                    <label className="form-label">Admin Code</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      value={adminCode}
+                      onChange={(e) => setAdminCode(e.target.value)}
+                      placeholder="Enter admin secret"
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             <div className="mb-3">
