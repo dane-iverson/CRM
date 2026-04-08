@@ -12,9 +12,31 @@ const User = require("./models/user");
 
 const app = express();
 
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:2901")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow same-origin server requests and non-browser clients (Postman/curl).
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("CORS origin not allowed"));
+  },
+  optionsSuccessStatus: 200,
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// Health check endpoint for hosting platforms and uptime checks.
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", uptime: process.uptime() });
+});
 
 // Nodemailer transporter
 const transporter = nodemailer.createTransport({

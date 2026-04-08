@@ -27,6 +27,13 @@ ADMIN_SECRET=your_admin_signup_secret
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_gmail_app_password
 EMAIL_FROM=your_email@gmail.com
+CORS_ORIGIN=http://localhost:2901
+```
+
+Create `client/.env`:
+
+```env
+REACT_APP_API_BASE_URL=http://localhost:4000
 ```
 
 ## Install
@@ -40,6 +47,8 @@ cd ../client && npm install
 
 - Backend: `cd server && npm run dev` (port `4000`)
 - Frontend: `cd client && npm start` (port `2901`)
+
+For hosted environments, set `REACT_APP_API_BASE_URL` to your deployed backend URL and set `CORS_ORIGIN` to your frontend URL.
 
 ## Core Features
 

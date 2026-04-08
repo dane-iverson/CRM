@@ -24,3 +24,6 @@ yarn-error.log*
 
 # Nested git backup metadata
 *.git_client_backup/
+
+# Copilot project metadata
+.github/

@@ -14,6 +14,7 @@ ADMIN_SECRET=your_admin_signup_secret
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_gmail_app_password
 EMAIL_FROM=your_email@gmail.com
+CORS_ORIGIN=http://localhost:2901
 ```
 
 2. Install dependencies: `npm install`
@@ -37,6 +38,20 @@ All lead endpoints require `Authorization: Bearer <token>`.
 - `GET /leads/search?query=...` Search leads by name or phone
 - `POST /reminder/:leadId` Schedule reminder metadata for a lead
 
+## Utility Endpoint
+
+- `GET /health` Returns API status for uptime and deployment checks
+
 ## Scheduled Job
 
 A daily scheduler checks overdue follow-ups and sends reminder emails for leads with reminder email enabled.
+
+## CORS Configuration
+
+Set `CORS_ORIGIN` to a comma-separated list of allowed frontend origins in production.
+
+Example:
+
+```env
+CORS_ORIGIN=https://your-app.vercel.app,https://staging-your-app.vercel.app
+```
