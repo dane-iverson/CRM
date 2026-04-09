@@ -54,6 +54,11 @@ This CRM is a full-stack web application for capturing, managing, and following 
 - In-app follow-up urgency reminders:
   - Warning after 7 days without contact
   - Critical after 14 days without contact
+- Dedicated urgency inbox mailbox for follow-up queue management
+- Inbox actions:
+  - Mark as contacted (auto-resolves urgency items)
+  - Open lead details directly from inbox
+  - Admin dismiss control for active urgency items
 - One-click "Mark Contacted" action to log contact dates
 - Persistent contact history per lead for auditability
 - Scheduled backend job for overdue follow-up checks

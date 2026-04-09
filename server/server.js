@@ -14,6 +14,11 @@ const User = require("./models/user");
 const Alert = require("./models/alert");
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+const screenshotMode = process.env.SCREENSHOT_MODE === "true";
+const defaultRateLimitMax = isProduction ? 200 : 2000;
+const warningThresholdMinutes = screenshotMode ? 5 : 7 * 24 * 60;
+const criticalThresholdMinutes = screenshotMode ? 10 : 14 * 24 * 60;
 
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:2901")
   .split(",")
@@ -34,7 +39,7 @@ const corsOptions = {
 
 const requestLimiter = rateLimit({
   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-  max: Number(process.env.RATE_LIMIT_MAX || 200),
+  max: Number(process.env.RATE_LIMIT_MAX || defaultRateLimitMax),
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path === "/health",
@@ -59,16 +64,16 @@ const getLeadUrgencyLevel = (lead) => {
   const anchorDate = lead.lastContactedAt || lead.createdAt;
   if (!anchorDate) return null;
 
-  const daysSinceContact = Math.floor(
-    (Date.now() - new Date(anchorDate).getTime()) / (1000 * 60 * 60 * 24),
+  const minutesSinceContact = Math.floor(
+    (Date.now() - new Date(anchorDate).getTime()) / (1000 * 60),
   );
 
-  if (daysSinceContact >= 14) {
-    return { level: "critical", days: daysSinceContact };
+  if (minutesSinceContact >= criticalThresholdMinutes) {
+    return { level: "critical" };
   }
 
-  if (daysSinceContact >= 7) {
-    return { level: "warning", days: daysSinceContact };
+  if (minutesSinceContact >= warningThresholdMinutes) {
+    return { level: "warning" };
   }
 
   return null;
@@ -134,8 +139,8 @@ const syncUrgencyAlertsForUser = async (user) => {
     const key = getAlertKey(String(lead._id), targetUserId);
     const message =
       urgency.level === "critical"
-        ? `${lead.name} has not been contacted in ${urgency.days} days (14+ day critical reminder).`
-        : `${lead.name} has not been contacted in ${urgency.days} days (7+ day warning).`;
+        ? `${lead.name} has not been contacted (14+ day critical reminder).`
+        : `${lead.name} has not been contacted (7+ day warning).`;
 
     desiredByKey.set(key, {
       leadId: lead._id,
