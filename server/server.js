@@ -11,6 +11,7 @@ const schedule = require("node-schedule");
 const jwt = require("jsonwebtoken");
 const Lead = require("./models/lead");
 const User = require("./models/user");
+const Alert = require("./models/alert");
 
 const app = express();
 
@@ -52,6 +53,149 @@ const handleServerError = (res, req, error, statusCode = 500) => {
     error: statusCode === 500 ? "Internal server error" : error.message,
     requestId: req.requestId,
   });
+};
+
+const getLeadUrgencyLevel = (lead) => {
+  const anchorDate = lead.lastContactedAt || lead.createdAt;
+  if (!anchorDate) return null;
+
+  const daysSinceContact = Math.floor(
+    (Date.now() - new Date(anchorDate).getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (daysSinceContact >= 14) {
+    return { level: "critical", days: daysSinceContact };
+  }
+
+  if (daysSinceContact >= 7) {
+    return { level: "warning", days: daysSinceContact };
+  }
+
+  return null;
+};
+
+const getAlertKey = (leadId, userId) => `${leadId}:${userId || "unassigned"}`;
+
+const syncUrgencyAlertsForUser = async (user) => {
+  const leadQuery = { status: { $ne: "Closed" } };
+  if (user.role !== "admin") {
+    leadQuery.userId = user.id;
+  }
+
+  const leads = await Lead.find(leadQuery)
+    .select("_id userId name createdAt lastContactedAt")
+    .lean();
+
+  const alertScopeQuery = { status: "active" };
+  if (user.role !== "admin") {
+    alertScopeQuery.userId = user.id;
+  }
+
+  const activeAlerts = await Alert.find(alertScopeQuery)
+    .select("_id leadId userId level status message createdAt updatedAt")
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const activeByKey = new Map();
+  const duplicateAlertIds = [];
+  for (const alert of activeAlerts) {
+    const key = getAlertKey(
+      String(alert.leadId),
+      alert.userId ? String(alert.userId) : null,
+    );
+
+    if (activeByKey.has(key)) {
+      duplicateAlertIds.push(alert._id);
+      continue;
+    }
+
+    activeByKey.set(key, alert);
+  }
+
+  if (duplicateAlertIds.length > 0) {
+    await Alert.updateMany(
+      { _id: { $in: duplicateAlertIds } },
+      { $set: { status: "resolved", resolvedAt: new Date() } },
+    );
+  }
+
+  const desiredByKey = new Map();
+  for (const lead of leads) {
+    const targetUserId = lead.userId ? String(lead.userId) : null;
+    if (user.role !== "admin" && targetUserId !== user.id) {
+      continue;
+    }
+
+    const urgency = getLeadUrgencyLevel(lead);
+    if (!urgency) {
+      continue;
+    }
+
+    const key = getAlertKey(String(lead._id), targetUserId);
+    const message =
+      urgency.level === "critical"
+        ? `${lead.name} has not been contacted in ${urgency.days} days (14+ day critical reminder).`
+        : `${lead.name} has not been contacted in ${urgency.days} days (7+ day warning).`;
+
+    desiredByKey.set(key, {
+      leadId: lead._id,
+      userId: targetUserId,
+      level: urgency.level,
+      message,
+    });
+  }
+
+  for (const [key, desiredAlert] of desiredByKey.entries()) {
+    const existingAlert = activeByKey.get(key);
+
+    if (!existingAlert) {
+      try {
+        await Alert.findOneAndUpdate(
+          {
+            leadId: desiredAlert.leadId,
+            userId: desiredAlert.userId,
+            status: "active",
+          },
+          {
+            $set: {
+              level: desiredAlert.level,
+              message: desiredAlert.message,
+            },
+            $setOnInsert: {
+              leadId: desiredAlert.leadId,
+              userId: desiredAlert.userId,
+              status: "active",
+            },
+          },
+          { upsert: true, new: true },
+        );
+      } catch (error) {
+        if (error.code !== 11000) {
+          throw error;
+        }
+      }
+      continue;
+    }
+
+    if (
+      existingAlert.level !== desiredAlert.level ||
+      existingAlert.message !== desiredAlert.message
+    ) {
+      await Alert.findByIdAndUpdate(existingAlert._id, {
+        level: desiredAlert.level,
+        message: desiredAlert.message,
+      });
+    }
+  }
+
+  for (const [key, activeAlert] of activeByKey.entries()) {
+    if (!desiredByKey.has(key)) {
+      await Alert.findByIdAndUpdate(activeAlert._id, {
+        status: "resolved",
+        resolvedAt: new Date(),
+      });
+    }
+  }
 };
 
 // Middleware
@@ -202,6 +346,8 @@ app.post("/auth/login", async (req, res) => {
 // GET /leads - return leads for the current user, or all leads for an admin
 app.get("/leads", authenticateToken, async (req, res) => {
   try {
+    await syncUrgencyAlertsForUser(req.user);
+
     const { status } = req.query;
     let query = {};
     if (req.user.role !== "admin") {
@@ -266,6 +412,10 @@ app.post("/leads/:id/contact", authenticateToken, async (req, res) => {
     }
 
     await lead.save();
+    await Alert.updateMany(
+      { leadId: lead._id, status: "active" },
+      { $set: { status: "resolved", resolvedAt: new Date() } },
+    );
 
     const updatedLead = await Lead.findById(lead._id).populate(
       "userId",
@@ -311,7 +461,81 @@ app.delete("/leads/:id", authenticateToken, async (req, res) => {
     if (!lead) {
       return res.status(404).json({ error: "Lead not found" });
     }
+    await Alert.updateMany(
+      { leadId: lead._id, status: "active" },
+      { $set: { status: "resolved", resolvedAt: new Date() } },
+    );
     res.json({ message: "Lead deleted" });
+  } catch (err) {
+    return handleServerError(res, req, err);
+  }
+});
+
+// GET /alerts - get active urgency inbox alerts for the current user
+app.get("/alerts", authenticateToken, async (req, res) => {
+  try {
+    await syncUrgencyAlertsForUser(req.user);
+
+    const query = { status: "active" };
+    if (req.user.role !== "admin") {
+      query.userId = req.user.id;
+    }
+
+    const alerts = await Alert.find(query)
+      .populate("userId", "name email role")
+      .populate(
+        "leadId",
+        "name phone email notes product status createdAt updatedAt followUpDate lastContactedAt contactHistory userId",
+      )
+      .lean();
+
+    const invalidLeadAlertIds = alerts
+      .filter((alert) => !alert.leadId)
+      .map((alert) => alert._id);
+    if (invalidLeadAlertIds.length > 0) {
+      await Alert.updateMany(
+        { _id: { $in: invalidLeadAlertIds } },
+        { $set: { status: "resolved", resolvedAt: new Date() } },
+      );
+    }
+
+    const validAlerts = alerts.filter((alert) => alert.leadId);
+    validAlerts.sort((a, b) => {
+      if (a.level === b.level) {
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+      }
+      return a.level === "critical" ? -1 : 1;
+    });
+
+    res.json(validAlerts);
+  } catch (err) {
+    return handleServerError(res, req, err);
+  }
+});
+
+// DELETE /alerts/:id - dismiss an active alert
+app.delete("/alerts/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const alert = await Alert.findById(id);
+    if (!alert) {
+      return res.status(404).json({ error: "Alert not found" });
+    }
+
+    const alertOwnerId = alert.userId ? String(alert.userId) : null;
+    const canDismiss =
+      req.user.role === "admin" || alertOwnerId === req.user.id;
+    if (!canDismiss) {
+      return res
+        .status(403)
+        .json({ error: "Not allowed to dismiss this alert" });
+    }
+
+    alert.status = "dismissed";
+    alert.dismissedAt = new Date();
+    await alert.save();
+
+    res.json({ message: "Alert dismissed" });
   } catch (err) {
     return handleServerError(res, req, err);
   }

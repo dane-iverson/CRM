@@ -41,6 +41,11 @@ All lead endpoints require `Authorization: Bearer <token>`.
 - `GET /leads/search?query=...` Search leads by name or phone
 - `POST /reminder/:leadId` Schedule reminder metadata for a lead
 
+## Urgency Inbox Endpoints
+
+- `GET /alerts` Get active in-app urgency reminders (rep scoped, admin sees all)
+- `DELETE /alerts/:id` Dismiss an active urgency reminder (admin or owner)
+
 ## Utility Endpoint
 
 - `GET /health` Returns API status for uptime and deployment checks

@@ -35,6 +35,7 @@ function getReminderLevel(lead) {
 
 function Dashboard({ user, onLogout }) {
   const [leads, setLeads] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [filteredLeads, setFilteredLeads] = useState([]);
   const [statusFilter, setStatusFilter] = useState("All");
   const [repFilter, setRepFilter] = useState("All");
@@ -54,14 +55,41 @@ function Dashboard({ user, onLogout }) {
     }
   }, []);
 
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/alerts`);
+      const uniqueAlerts = Array.from(
+        response.data
+          .reduce((acc, alert) => {
+            const key = `${alert.leadId?._id || alert.leadId}:${alert.userId?._id || "unassigned"}`;
+            if (!acc.has(key)) {
+              acc.set(key, alert);
+            }
+            return acc;
+          }, new Map())
+          .values(),
+      );
+      setAlerts(uniqueAlerts);
+    } catch (error) {
+      console.error("Error fetching alerts:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchLeads();
+    fetchAlerts();
 
     // Set up interval for every 10 seconds
-    const interval = setInterval(fetchLeads, 10000);
+    const interval = setInterval(() => {
+      fetchLeads();
+      fetchAlerts();
+    }, 10000);
 
     // Set up focus listener
-    const handleFocus = () => fetchLeads();
+    const handleFocus = () => {
+      fetchLeads();
+      fetchAlerts();
+    };
     window.addEventListener("focus", handleFocus);
 
     // Cleanup
@@ -69,10 +97,11 @@ function Dashboard({ user, onLogout }) {
       clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [fetchLeads]);
+  }, [fetchLeads, fetchAlerts]);
 
   const handleRefresh = () => {
     fetchLeads();
+    fetchAlerts();
   };
 
   const filterLeads = () => {
@@ -170,6 +199,7 @@ function Dashboard({ user, onLogout }) {
     try {
       await axios.delete(`${API_BASE}/leads/${leadId}`);
       fetchLeads();
+      fetchAlerts();
     } catch (error) {
       console.error("Error deleting lead:", error);
     }
@@ -184,8 +214,18 @@ function Dashboard({ user, onLogout }) {
     try {
       await axios.post(`${API_BASE}/leads/${leadId}/contact`);
       fetchLeads();
+      fetchAlerts();
     } catch (error) {
       console.error("Error marking lead as contacted:", error);
+    }
+  };
+
+  const handleDismissAlert = async (alertId) => {
+    try {
+      await axios.delete(`${API_BASE}/alerts/${alertId}`);
+      fetchAlerts();
+    } catch (error) {
+      console.error("Error dismissing alert:", error);
     }
   };
 
@@ -193,12 +233,8 @@ function Dashboard({ user, onLogout }) {
     return date && new Date(date) < new Date();
   };
 
-  const warningReminders = filteredLeads.filter(
-    (lead) => getReminderLevel(lead)?.level === "warning",
-  );
-  const criticalReminders = filteredLeads.filter(
-    (lead) => getReminderLevel(lead)?.level === "critical",
-  );
+  const criticalAlerts = alerts.filter((alert) => alert.level === "critical");
+  const warningAlerts = alerts.filter((alert) => alert.level === "warning");
 
   return (
     <div className="min-vh-100 bg-light p-4">
@@ -296,31 +332,86 @@ function Dashboard({ user, onLogout }) {
           </div>
         </div>
 
-        {(criticalReminders.length > 0 || warningReminders.length > 0) && (
-          <div className="mb-3">
-            {criticalReminders.length > 0 && (
-              <div className="alert alert-danger mb-2" role="alert">
-                <strong>Urgent follow-ups:</strong> {criticalReminders.length}{" "}
-                lead
-                {criticalReminders.length === 1 ? "" : "s"}{" "}
-                {criticalReminders.length === 1 ? "has" : "have"} not been
-                contacted in 14+ days.
+        <div className="card border-0 shadow-sm mb-3">
+          <div className="card-body">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h5 className="card-title mb-0">Urgency Inbox</h5>
+              <div className="d-flex gap-2">
+                <span className="badge bg-danger">
+                  Critical: {criticalAlerts.length}
+                </span>
+                <span className="badge bg-warning text-dark">
+                  Warning: {warningAlerts.length}
+                </span>
               </div>
-            )}
-            {warningReminders.length > 0 && (
-              <div className="alert alert-warning mb-0" role="alert">
-                <strong>Follow-up due soon:</strong> {warningReminders.length}{" "}
-                lead
-                {warningReminders.length === 1 ? "" : "s"}{" "}
-                {warningReminders.length === 1 ? "has" : "have"} not been
-                contacted in 7+ days.
+            </div>
+            {alerts.length === 0 ? (
+              <p className="text-muted mb-0">No active urgency reminders.</p>
+            ) : (
+              <div className="list-group">
+                {alerts.slice(0, 10).map((alert) => {
+                  const alertLead = alert.leadId;
+                  const leadData =
+                    leads.find((lead) => lead._id === alertLead?._id) ||
+                    alertLead;
+
+                  return (
+                    <div
+                      key={alert._id}
+                      className="list-group-item d-flex flex-column flex-md-row justify-content-between gap-2"
+                    >
+                      <div>
+                        <span
+                          className={`badge me-2 ${
+                            alert.level === "critical"
+                              ? "bg-danger"
+                              : "bg-warning text-dark"
+                          }`}
+                        >
+                          {alert.level === "critical" ? "Critical" : "Warning"}
+                        </span>
+                        <strong>{alertLead?.name || "Lead"}</strong>
+                        <div className="text-muted small mt-1">
+                          {alert.message}
+                        </div>
+                        {user.role === "admin" && alert.userId?.name && (
+                          <div className="text-muted small">
+                            Assigned rep: {alert.userId.name}
+                          </div>
+                        )}
+                      </div>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <button
+                          className="btn btn-sm btn-success"
+                          onClick={() => handleMarkContacted(alertLead?._id)}
+                        >
+                          Mark Contacted
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-info"
+                          onClick={() => handleViewDetailsClick(leadData)}
+                        >
+                          Open Lead
+                        </button>
+                        {user.role === "admin" && (
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleDismissAlert(alert._id)}
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
+        </div>
 
         <div className="bg-white shadow rounded">
-          <table className="table table-striped mb-0">
+          <table className="table mb-0">
             <thead className="table-light">
               <tr>
                 <th className="text-start">Name</th>
@@ -337,7 +428,7 @@ function Dashboard({ user, onLogout }) {
             <tbody>
               {filteredLeads.map((lead) => {
                 const reminderLevel = getReminderLevel(lead);
-                const rowClass = reminderLevel?.level
+                const rowHighlightClass = reminderLevel?.level
                   ? reminderLevel.level === "critical"
                     ? "table-danger"
                     : "table-warning"
@@ -346,18 +437,24 @@ function Dashboard({ user, onLogout }) {
                     : "";
 
                 return (
-                  <tr key={lead._id} className={rowClass}>
-                    <td className="fw-medium text-dark">{lead.name}</td>
-                    <td className="text-muted">{lead.phone}</td>
+                  <tr key={lead._id}>
+                    <td className={`fw-medium text-dark ${rowHighlightClass}`}>
+                      {lead.name}
+                    </td>
+                    <td className={`text-muted ${rowHighlightClass}`}>
+                      {lead.phone}
+                    </td>
                     {user.role === "admin" && (
-                      <td className="text-muted">
+                      <td className={`text-muted ${rowHighlightClass}`}>
                         {lead.userId && lead.userId.name
                           ? lead.userId.name
                           : "Unassigned"}
                       </td>
                     )}
-                    <td className="text-muted">{lead.product || "-"}</td>
-                    <td>
+                    <td className={`text-muted ${rowHighlightClass}`}>
+                      {lead.product || "-"}
+                    </td>
+                    <td className={rowHighlightClass}>
                       <span
                         className={`badge ${
                           lead.status === "New"
@@ -372,7 +469,7 @@ function Dashboard({ user, onLogout }) {
                         {lead.status}
                       </span>
                     </td>
-                    <td className="text-muted">
+                    <td className={`text-muted ${rowHighlightClass}`}>
                       {lead.lastContactedAt
                         ? new Date(lead.lastContactedAt).toLocaleDateString()
                         : "-"}
@@ -390,62 +487,64 @@ function Dashboard({ user, onLogout }) {
                         </div>
                       )}
                     </td>
-                    <td className="d-flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => handleMarkContacted(lead._id)}
-                        className="btn btn-sm btn-success"
-                        title="Mark this lead as contacted and log today"
-                        aria-label="Mark contacted"
-                      >
-                        Mark Contacted
-                      </button>
-                      <button
-                        onClick={() => handleViewDetailsClick(lead)}
-                        className="btn btn-sm btn-outline-info"
-                        title="View client details and notes"
-                        aria-label="View details"
-                      >
-                        Details
-                      </button>
-                      <a
-                        href={`https://wa.me/${formatPhone(lead.phone)}?text=${encodeURIComponent(
-                          `Hi ${lead.name}, just following up on your quote/request.`,
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-sm btn-outline-success"
-                        title="Open WhatsApp chat"
-                        aria-label="WhatsApp"
-                      >
-                        WhatsApp
-                      </a>
-                      <button
-                        onClick={() => {
-                          setSelectedLead(lead);
-                          setShowReminderModal(true);
-                        }}
-                        className="btn btn-sm btn-outline-warning"
-                        title="Schedule a reminder for this lead"
-                        aria-label="Reminder"
-                      >
-                        Reminder
-                      </button>
-                      <button
-                        onClick={() => handleEditClick(lead)}
-                        className="btn btn-sm btn-outline-primary"
-                        title="Edit this lead"
-                        aria-label="Edit"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(lead._id)}
-                        className="btn btn-sm btn-outline-danger"
-                        title="Delete this lead"
-                        aria-label="Delete"
-                      >
-                        Delete
-                      </button>
+                    <td className={`align-middle ${rowHighlightClass}`}>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <button
+                          onClick={() => handleMarkContacted(lead._id)}
+                          className="btn btn-sm btn-success"
+                          title="Mark this lead as contacted and log today"
+                          aria-label="Mark contacted"
+                        >
+                          Mark Contacted
+                        </button>
+                        <button
+                          onClick={() => handleViewDetailsClick(lead)}
+                          className="btn btn-sm btn-outline-info"
+                          title="View client details and notes"
+                          aria-label="View details"
+                        >
+                          Details
+                        </button>
+                        <a
+                          href={`https://wa.me/${formatPhone(lead.phone)}?text=${encodeURIComponent(
+                            `Hi ${lead.name}, just following up on your quote/request.`,
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-outline-success"
+                          title="Open WhatsApp chat"
+                          aria-label="WhatsApp"
+                        >
+                          WhatsApp
+                        </a>
+                        <button
+                          onClick={() => {
+                            setSelectedLead(lead);
+                            setShowReminderModal(true);
+                          }}
+                          className="btn btn-sm btn-outline-warning"
+                          title="Schedule a reminder for this lead"
+                          aria-label="Reminder"
+                        >
+                          Reminder
+                        </button>
+                        <button
+                          onClick={() => handleEditClick(lead)}
+                          className="btn btn-sm btn-outline-primary"
+                          title="Edit this lead"
+                          aria-label="Edit"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(lead._id)}
+                          className="btn btn-sm btn-outline-danger"
+                          title="Delete this lead"
+                          aria-label="Delete"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
