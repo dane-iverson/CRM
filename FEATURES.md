@@ -51,6 +51,11 @@ This CRM is a full-stack web application for capturing, managing, and following 
 ## Reminder and Follow-up Workflow
 
 - Per-lead reminder settings
+- In-app follow-up urgency reminders:
+  - Warning after 7 days without contact
+  - Critical after 14 days without contact
+- One-click "Mark Contacted" action to log contact dates
+- Persistent contact history per lead for auditability
 - Scheduled backend job for overdue follow-up checks
 - Automated reminder email dispatch for eligible leads
 

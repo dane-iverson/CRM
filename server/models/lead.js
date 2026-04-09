@@ -17,6 +17,11 @@ const leadSchema = new mongoose.Schema(
       enum: ["New", "Contacted", "Quoted", "Closed"],
       default: "New",
     },
+    lastContactedAt: Date,
+    contactHistory: {
+      type: [Date],
+      default: [],
+    },
     followUpDate: Date,
     reminderEmail: { type: Boolean, default: false },
     reminderSms: { type: Boolean, default: false },

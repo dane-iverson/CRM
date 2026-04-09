@@ -233,10 +233,45 @@ app.post("/leads", authenticateToken, async (req, res) => {
       notes,
       product,
       status,
+      lastContactedAt: status === "New" ? null : new Date(),
+      contactHistory: status === "New" ? [] : [new Date()],
       followUpDate,
     });
     await lead.save();
     res.status(201).json(lead);
+  } catch (err) {
+    return handleServerError(res, req, err);
+  }
+});
+
+// POST /leads/:id/contact - mark lead as contacted and append contact log entry
+app.post("/leads/:id/contact", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = { _id: id };
+    if (req.user.role !== "admin") {
+      query.userId = req.user.id;
+    }
+
+    const lead = await Lead.findOne(query);
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    const contactedAt = new Date();
+    lead.lastContactedAt = contactedAt;
+    lead.contactHistory.push(contactedAt);
+    if (lead.status === "New") {
+      lead.status = "Contacted";
+    }
+
+    await lead.save();
+
+    const updatedLead = await Lead.findById(lead._id).populate(
+      "userId",
+      "name email role",
+    );
+    res.json(updatedLead);
   } catch (err) {
     return handleServerError(res, req, err);
   }
@@ -308,17 +343,6 @@ app.get("/leads/search", authenticateToken, async (req, res) => {
   }
 });
 
-app.use((err, req, res, next) => {
-  if (err && err.message === "CORS origin not allowed") {
-    return res.status(403).json({
-      error: "CORS origin not allowed",
-      requestId: req.requestId,
-    });
-  }
-
-  return handleServerError(res, req, err);
-});
-
 // POST /reminder/:leadId - schedule reminder
 app.post("/reminder/:leadId", authenticateToken, async (req, res) => {
   try {
@@ -342,8 +366,19 @@ app.post("/reminder/:leadId", authenticateToken, async (req, res) => {
     }
     res.json({ message: "Reminder scheduled" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return handleServerError(res, req, err);
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err && err.message === "CORS origin not allowed") {
+    return res.status(403).json({
+      error: "CORS origin not allowed",
+      requestId: req.requestId,
+    });
+  }
+
+  return handleServerError(res, req, err);
 });
 
 // Function to send reminder email

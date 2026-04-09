@@ -14,6 +14,25 @@ function formatPhone(phone) {
   return phone;
 }
 
+function getReminderLevel(lead) {
+  const anchorDate = lead.lastContactedAt || lead.createdAt;
+  if (!anchorDate) return null;
+
+  const daysSinceContact = Math.floor(
+    (Date.now() - new Date(anchorDate).getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (daysSinceContact >= 14) {
+    return { level: "critical", days: daysSinceContact };
+  }
+
+  if (daysSinceContact >= 7) {
+    return { level: "warning", days: daysSinceContact };
+  }
+
+  return null;
+}
+
 function Dashboard({ user, onLogout }) {
   const [leads, setLeads] = useState([]);
   const [filteredLeads, setFilteredLeads] = useState([]);
@@ -161,9 +180,25 @@ function Dashboard({ user, onLogout }) {
     setShowDetailsModal(true);
   };
 
+  const handleMarkContacted = async (leadId) => {
+    try {
+      await axios.post(`${API_BASE}/leads/${leadId}/contact`);
+      fetchLeads();
+    } catch (error) {
+      console.error("Error marking lead as contacted:", error);
+    }
+  };
+
   const isOverdue = (date) => {
     return date && new Date(date) < new Date();
   };
+
+  const warningReminders = filteredLeads.filter(
+    (lead) => getReminderLevel(lead)?.level === "warning",
+  );
+  const criticalReminders = filteredLeads.filter(
+    (lead) => getReminderLevel(lead)?.level === "critical",
+  );
 
   return (
     <div className="min-vh-100 bg-light p-4">
@@ -261,6 +296,29 @@ function Dashboard({ user, onLogout }) {
           </div>
         </div>
 
+        {(criticalReminders.length > 0 || warningReminders.length > 0) && (
+          <div className="mb-3">
+            {criticalReminders.length > 0 && (
+              <div className="alert alert-danger mb-2" role="alert">
+                <strong>Urgent follow-ups:</strong> {criticalReminders.length}{" "}
+                lead
+                {criticalReminders.length === 1 ? "" : "s"}{" "}
+                {criticalReminders.length === 1 ? "has" : "have"} not been
+                contacted in 14+ days.
+              </div>
+            )}
+            {warningReminders.length > 0 && (
+              <div className="alert alert-warning mb-0" role="alert">
+                <strong>Follow-up due soon:</strong> {warningReminders.length}{" "}
+                lead
+                {warningReminders.length === 1 ? "" : "s"}{" "}
+                {warningReminders.length === 1 ? "has" : "have"} not been
+                contacted in 7+ days.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="bg-white shadow rounded">
           <table className="table table-striped mb-0">
             <thead className="table-light">
@@ -277,92 +335,121 @@ function Dashboard({ user, onLogout }) {
               </tr>
             </thead>
             <tbody>
-              {filteredLeads.map((lead) => (
-                <tr
-                  key={lead._id}
-                  className={isOverdue(lead.followUpDate) ? "table-danger" : ""}
-                >
-                  <td className="fw-medium text-dark">{lead.name}</td>
-                  <td className="text-muted">{lead.phone}</td>
-                  {user.role === "admin" && (
-                    <td className="text-muted">
-                      {lead.userId && lead.userId.name
-                        ? lead.userId.name
-                        : "Unassigned"}
+              {filteredLeads.map((lead) => {
+                const reminderLevel = getReminderLevel(lead);
+                const rowClass = reminderLevel?.level
+                  ? reminderLevel.level === "critical"
+                    ? "table-danger"
+                    : "table-warning"
+                  : isOverdue(lead.followUpDate)
+                    ? "table-danger"
+                    : "";
+
+                return (
+                  <tr key={lead._id} className={rowClass}>
+                    <td className="fw-medium text-dark">{lead.name}</td>
+                    <td className="text-muted">{lead.phone}</td>
+                    {user.role === "admin" && (
+                      <td className="text-muted">
+                        {lead.userId && lead.userId.name
+                          ? lead.userId.name
+                          : "Unassigned"}
+                      </td>
+                    )}
+                    <td className="text-muted">{lead.product || "-"}</td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          lead.status === "New"
+                            ? "bg-success"
+                            : lead.status === "Contacted"
+                              ? "bg-primary"
+                              : lead.status === "Quoted"
+                                ? "bg-warning"
+                                : "bg-secondary"
+                        }`}
+                      >
+                        {lead.status}
+                      </span>
                     </td>
-                  )}
-                  <td className="text-muted">{lead.product || "-"}</td>
-                  <td>
-                    <span
-                      className={`badge ${
-                        lead.status === "New"
-                          ? "bg-success"
-                          : lead.status === "Contacted"
-                            ? "bg-primary"
-                            : lead.status === "Quoted"
-                              ? "bg-warning"
-                              : "bg-secondary"
-                      }`}
-                    >
-                      {lead.status}
-                    </span>
-                  </td>
-                  <td className="text-muted">
-                    {lead.updatedAt
-                      ? new Date(lead.updatedAt).toLocaleDateString()
-                      : "-"}
-                  </td>
-                  <td className="d-flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => handleViewDetailsClick(lead)}
-                      className="btn btn-sm btn-outline-info"
-                      title="View client details and notes"
-                      aria-label="View details"
-                    >
-                      Details
-                    </button>
-                    <a
-                      href={`https://wa.me/${formatPhone(lead.phone)}?text=${encodeURIComponent(
-                        `Hi ${lead.name}, just following up on your quote/request.`,
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-sm btn-outline-success"
-                      title="Open WhatsApp chat"
-                      aria-label="WhatsApp"
-                    >
-                      WhatsApp
-                    </a>
-                    <button
-                      onClick={() => {
-                        setSelectedLead(lead);
-                        setShowReminderModal(true);
-                      }}
-                      className="btn btn-sm btn-outline-warning"
-                      title="Schedule a reminder for this lead"
-                      aria-label="Reminder"
-                    >
-                      Reminder
-                    </button>
-                    <button
-                      onClick={() => handleEditClick(lead)}
-                      className="btn btn-sm btn-outline-primary"
-                      title="Edit this lead"
-                      aria-label="Edit"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteClick(lead._id)}
-                      className="btn btn-sm btn-outline-danger"
-                      title="Delete this lead"
-                      aria-label="Delete"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    <td className="text-muted">
+                      {lead.lastContactedAt
+                        ? new Date(lead.lastContactedAt).toLocaleDateString()
+                        : "-"}
+                      {reminderLevel && (
+                        <div>
+                          <span
+                            className={`badge mt-1 ${
+                              reminderLevel.level === "critical"
+                                ? "bg-danger"
+                                : "bg-warning text-dark"
+                            }`}
+                          >
+                            {reminderLevel.days} days since contact
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="d-flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => handleMarkContacted(lead._id)}
+                        className="btn btn-sm btn-success"
+                        title="Mark this lead as contacted and log today"
+                        aria-label="Mark contacted"
+                      >
+                        Mark Contacted
+                      </button>
+                      <button
+                        onClick={() => handleViewDetailsClick(lead)}
+                        className="btn btn-sm btn-outline-info"
+                        title="View client details and notes"
+                        aria-label="View details"
+                      >
+                        Details
+                      </button>
+                      <a
+                        href={`https://wa.me/${formatPhone(lead.phone)}?text=${encodeURIComponent(
+                          `Hi ${lead.name}, just following up on your quote/request.`,
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-sm btn-outline-success"
+                        title="Open WhatsApp chat"
+                        aria-label="WhatsApp"
+                      >
+                        WhatsApp
+                      </a>
+                      <button
+                        onClick={() => {
+                          setSelectedLead(lead);
+                          setShowReminderModal(true);
+                        }}
+                        className="btn btn-sm btn-outline-warning"
+                        title="Schedule a reminder for this lead"
+                        aria-label="Reminder"
+                      >
+                        Reminder
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(lead)}
+                        className="btn btn-sm btn-outline-primary"
+                        title="Edit this lead"
+                        aria-label="Edit"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(lead._id)}
+                        className="btn btn-sm btn-outline-danger"
+                        title="Delete this lead"
+                        aria-label="Delete"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

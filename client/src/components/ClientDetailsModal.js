@@ -61,6 +61,29 @@ function ClientDetailsModal({ lead, onClose }) {
                 </span>
               </p>
             </div>
+            <div className="mb-3">
+              <label className="fw-bold text-muted">Last Contacted</label>
+              <p className="text-dark">
+                {lead.lastContactedAt
+                  ? new Date(lead.lastContactedAt).toLocaleDateString()
+                  : "Not yet contacted"}
+              </p>
+            </div>
+            {lead.contactHistory && lead.contactHistory.length > 0 && (
+              <div className="mb-3">
+                <label className="fw-bold text-muted">Contact Log</label>
+                <ul className="mb-0">
+                  {[...lead.contactHistory]
+                    .sort((a, b) => new Date(b) - new Date(a))
+                    .slice(0, 5)
+                    .map((entry, index) => (
+                      <li key={`${entry}-${index}`} className="text-dark">
+                        {new Date(entry).toLocaleString()}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
             {lead.followUpDate && (
               <div className="mb-3">
                 <label className="fw-bold text-muted">Follow-up Date</label>

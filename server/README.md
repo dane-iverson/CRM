@@ -35,6 +35,7 @@ All lead endpoints require `Authorization: Bearer <token>`.
 
 - `GET /leads` List leads (admin sees all, reps see own)
 - `POST /leads` Create a lead for the authenticated user
+- `POST /leads/:id/contact` Mark lead as contacted and append a contact log entry
 - `PUT /leads/:id` Update a lead (admin any lead, rep own lead)
 - `DELETE /leads/:id` Delete a lead (admin any lead, rep own lead)
 - `GET /leads/search?query=...` Search leads by name or phone
