@@ -54,6 +54,10 @@ This CRM is a full-stack web application for capturing, managing, and following 
 - In-app follow-up urgency reminders:
   - Warning after 7 days without contact
   - Critical after 14 days without contact
+- Optional screenshot mode for portfolio/demo captures:
+  - Warning after 5 minutes
+  - Critical after 10 minutes
+  - Enabled only when both backend and frontend screenshot mode env flags are true
 - Dedicated urgency inbox mailbox for follow-up queue management
 - Inbox actions:
   - Mark as contacted (auto-resolves urgency items)
@@ -70,6 +74,10 @@ This CRM is a full-stack web application for capturing, managing, and following 
 - Automatic lead refresh on load and at intervals
 - Manual refresh action in dashboard
 - Detailed lead modal for full client context
+- Relative "Last Contact" table display:
+  - Today
+  - 1 day since contact
+  - N days since contact
 - Responsive UI powered by Bootstrap
 
 ## Security and Reliability

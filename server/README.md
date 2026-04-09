@@ -17,6 +17,7 @@ EMAIL_FROM=your_email@gmail.com
 CORS_ORIGIN=http://localhost:2901
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=200
+SCREENSHOT_MODE=false
 ```
 
 2. Install dependencies: `npm install`
@@ -46,6 +47,11 @@ All lead endpoints require `Authorization: Bearer <token>`.
 - `GET /alerts` Get active in-app urgency reminders (rep scoped, admin sees all)
 - `DELETE /alerts/:id` Dismiss an active urgency reminder (admin or owner)
 
+Urgency thresholds:
+
+- Default behavior: warning after 7 days, critical after 14 days
+- Screenshot mode (`SCREENSHOT_MODE=true`): warning after 5 minutes, critical after 10 minutes
+
 ## Utility Endpoint
 
 - `GET /health` Returns API status for uptime and deployment checks
@@ -54,6 +60,7 @@ All lead endpoints require `Authorization: Bearer <token>`.
 
 - Helmet security headers are enabled.
 - IP-based rate limiting is enabled (except `/health`).
+- Rate-limit defaults are stricter in production and higher in local development (can be overridden with env vars).
 - Every response includes `X-Request-Id` for easier debugging.
 - API errors include `requestId` so logs can be traced quickly.
 
