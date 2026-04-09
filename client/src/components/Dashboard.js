@@ -378,7 +378,7 @@ function Dashboard({ user, onLogout }) {
   return (
     <div className="dashboard-shell min-vh-100 p-4">
       <div className="container-fluid">
-        <div className="dashboard-topbar d-flex justify-content-between align-items-center mb-4">
+        <div className="dashboard-topbar d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
           <div>
             <h1 className="dashboard-title display-5 fw-bold mb-1">
               CRM Dashboard
@@ -429,11 +429,11 @@ function Dashboard({ user, onLogout }) {
           <div className="col-12 col-xl-8 order-2 order-xl-1">
             <div className="panel-card p-3 p-lg-4 mb-3">
               <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
-                <div className="d-flex gap-2 flex-wrap w-100 me-md-3">
+                <div className="d-flex gap-2 flex-wrap w-100 me-md-3 dashboard-filters">
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="form-select"
+                    className="form-select dashboard-filter-select"
                     style={{ maxWidth: "180px" }}
                   >
                     <option value="All">All</option>
@@ -446,7 +446,7 @@ function Dashboard({ user, onLogout }) {
                     <select
                       value={repFilter}
                       onChange={(e) => setRepFilter(e.target.value)}
-                      className="form-select"
+                      className="form-select dashboard-filter-select dashboard-rep-select"
                       style={{ maxWidth: "220px" }}
                     >
                       <option value="All">All Sales Reps</option>
@@ -465,11 +465,11 @@ function Dashboard({ user, onLogout }) {
                     placeholder="Search by name or phone"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="form-control"
+                    className="form-control dashboard-search-input"
                     style={{ flex: "1 1 360px", minWidth: "280px" }}
                   />
                 </div>
-                <div className="d-flex gap-2">
+                <div className="d-flex gap-2 dashboard-toolbar-actions">
                   <button
                     onClick={handleRefresh}
                     className="btn btn-outline-secondary"
